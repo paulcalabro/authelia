@@ -769,6 +769,11 @@ func TestValidateOIDCClients(t *testing.T) {
 		GrantTypes    []string
 	}
 
+	const (
+		abcabc123 = "abcabc123"
+		abc123abc = "abc123abc"
+	)
+
 	testCasses := []struct {
 		name     string
 		setup    func(have *schema.OpenIDConnect)
@@ -1576,10 +1581,12 @@ func TestValidateOIDCClients(t *testing.T) {
 			},
 		},
 		{
-			"ShouldSetDefaultUserInfoAlg",
+			"ShouldSetDefaultResponseSigningAlg",
 			nil,
 			func(t *testing.T, have *schema.OpenIDConnect) {
+				assert.Equal(t, oidc.SigningAlgNone, have.Clients[0].IntrospectionSignedResponseAlg)
 				assert.Equal(t, oidc.SigningAlgNone, have.Clients[0].UserinfoSigningAlg)
+				assert.Equal(t, oidc.SigningAlgRSAUsingSHA256, have.Clients[0].IDTokenSigningAlg)
 			},
 			tcv{
 				nil,
@@ -1597,12 +1604,18 @@ func TestValidateOIDCClients(t *testing.T) {
 			nil,
 		},
 		{
-			"ShouldNotOverrideUserInfoAlg",
+			"ShouldNotOverrideResponseSigningAlg",
 			func(have *schema.OpenIDConnect) {
-				have.Clients[0].UserinfoSigningAlg = oidc.SigningAlgRSAUsingSHA256
+				have.Clients[0].IntrospectionSignedResponseAlg = oidc.SigningAlgRSAUsingSHA384
+				have.Clients[0].UserinfoSigningAlg = oidc.SigningAlgRSAUsingSHA512
+				have.Clients[0].IDTokenSigningAlg = oidc.SigningAlgECDSAUsingP521AndSHA512
+
+				have.Discovery.ResponseObjectSigningAlgs = []string{oidc.SigningAlgRSAUsingSHA384, oidc.SigningAlgRSAUsingSHA512, oidc.SigningAlgECDSAUsingP521AndSHA512}
 			},
 			func(t *testing.T, have *schema.OpenIDConnect) {
-				assert.Equal(t, oidc.SigningAlgRSAUsingSHA256, have.Clients[0].UserinfoSigningAlg)
+				assert.Equal(t, oidc.SigningAlgRSAUsingSHA384, have.Clients[0].IntrospectionSignedResponseAlg)
+				assert.Equal(t, oidc.SigningAlgRSAUsingSHA512, have.Clients[0].UserinfoSigningAlg)
+				assert.Equal(t, oidc.SigningAlgECDSAUsingP521AndSHA512, have.Clients[0].IDTokenSigningAlg)
 			},
 			tcv{
 				nil,
@@ -1620,37 +1633,14 @@ func TestValidateOIDCClients(t *testing.T) {
 			nil,
 		},
 		{
-			"ShouldRaiseErrorOnInvalidUserInfoSigningAlg",
+			"ShouldRaiseErrorOnInvalidResponseSigningAlg",
 			func(have *schema.OpenIDConnect) {
+				have.Clients[0].IntrospectionSignedResponseAlg = rs256
+				have.Clients[0].IDTokenSigningAlg = rs256
 				have.Clients[0].UserinfoSigningAlg = rs256
 			},
 			func(t *testing.T, have *schema.OpenIDConnect) {
-				assert.Equal(t, rs256, have.Clients[0].UserinfoSigningAlg)
-			},
-			tcv{
-				nil,
-				nil,
-				nil,
-				nil,
-			},
-			tcv{
-				[]string{oidc.ScopeOpenID, oidc.ScopeGroups, oidc.ScopeProfile, oidc.ScopeEmail},
-				[]string{oidc.ResponseTypeAuthorizationCodeFlow},
-				[]string{oidc.ResponseModeFormPost, oidc.ResponseModeQuery},
-				[]string{oidc.GrantTypeAuthorizationCode},
-			},
-			nil,
-			[]string{
-				"identity_providers: oidc: clients: client 'test': option 'userinfo_signing_alg' must be one of 'RS256' or 'none' but it's configured as 'rs256'",
-			},
-		},
-		{
-			"ShouldRaiseErrorOnInvalidIDTokenSigningAlg",
-			func(have *schema.OpenIDConnect) {
-				have.Clients[0].IDTokenSigningAlg = rs256
-			},
-			func(t *testing.T, have *schema.OpenIDConnect) {
-				assert.Equal(t, rs256, have.Clients[0].IDTokenSigningAlg)
+				assert.Equal(t, rs256, have.Clients[0].IntrospectionSignedResponseAlg)
 			},
 			tcv{
 				nil,
@@ -1667,6 +1657,8 @@ func TestValidateOIDCClients(t *testing.T) {
 			nil,
 			[]string{
 				"identity_providers: oidc: clients: client 'test': option 'id_token_signing_alg' must be one of 'RS256' but it's configured as 'rs256'",
+				"identity_providers: oidc: clients: client 'test': option 'userinfo_signing_alg' must be one of 'RS256' or 'none' but it's configured as 'rs256'",
+				"identity_providers: oidc: clients: client 'test': option 'introspection_signed_response_alg' must be one of 'RS256' or 'none' but it's configured as 'rs256'",
 			},
 		},
 		{
@@ -2015,9 +2007,10 @@ func TestValidateOIDCClients(t *testing.T) {
 		{
 			"ShouldSetValidDefaultKeyID",
 			func(have *schema.OpenIDConnect) {
-				have.Clients[0].IDTokenSigningKeyID = "abcabc123"
-				have.Clients[0].UserinfoSigningKeyID = "abc123abc"
-				have.Discovery.ResponseObjectSigningKeyIDs = []string{"abcabc123", "abc123abc"}
+				have.Clients[0].IDTokenSigningKeyID = abcabc123
+				have.Clients[0].UserinfoSigningKeyID = abc123abc
+				have.Clients[0].IntrospectionSignedResponseKeyID = abc123abc
+				have.Discovery.ResponseObjectSigningKeyIDs = []string{abcabc123, abc123abc}
 			},
 			nil,
 			tcv{
@@ -2040,6 +2033,7 @@ func TestValidateOIDCClients(t *testing.T) {
 			func(have *schema.OpenIDConnect) {
 				have.Clients[0].IDTokenSigningKeyID = "ab"
 				have.Clients[0].UserinfoSigningKeyID = "cd"
+				have.Clients[0].IntrospectionSignedResponseKeyID = "ef"
 				have.Discovery.ResponseObjectSigningKeyIDs = []string{"abc123xyz"}
 			},
 			nil,
@@ -2057,8 +2051,9 @@ func TestValidateOIDCClients(t *testing.T) {
 			},
 			nil,
 			[]string{
-				"identity_providers: oidc: clients: client 'test': option 'userinfo_signing_key_id' must be one of 'abc123xyz' but it's configured as 'cd'",
 				"identity_providers: oidc: clients: client 'test': option 'id_token_signing_key_id' must be one of 'abc123xyz' but it's configured as 'ab'",
+				"identity_providers: oidc: clients: client 'test': option 'userinfo_signing_key_id' must be one of 'abc123xyz' but it's configured as 'cd'",
+				"identity_providers: oidc: clients: client 'test': option 'introspection_signed_response_alg' must be one of 'abc123xyz' but it's configured as 'ef'",
 			},
 		},
 		{
@@ -2191,7 +2186,9 @@ func TestValidateOIDCClients(t *testing.T) {
 			t.Run("Errors", func(t *testing.T) {
 				require.Len(t, val.Errors(), len(tc.errs))
 				for i, err := range tc.errs {
-					assert.EqualError(t, val.Errors()[i], err)
+					t.Run(fmt.Sprintf("Error%d", i+1), func(t *testing.T) {
+						assert.EqualError(t, val.Errors()[i], err)
+					})
 				}
 			})
 		})
